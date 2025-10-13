@@ -41,9 +41,12 @@ INSTALLED_APPS = [
     
     'rest_framework',
     'corsheaders',
+    'phonenumber_field',
     
     'core',
 ]
+
+AUTH_USER_MODEL = 'core.User'
 
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
