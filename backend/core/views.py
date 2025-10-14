@@ -31,7 +31,7 @@ class LoginView(APIView):
     permission_classes = [permissions.AllowAny]
     
     def post(self, request):
-        phone_number = request.get.data('phone_number')
+        phone_number = request.data.get('phone_number')
         password = request.data.get('password')
         
         if not phone_number or not password:
@@ -86,7 +86,9 @@ class GroupViewSet(viewsets.ModelViewSet):
         return GroupSerializer
     
     def get_queryset(self):
-        """Return groups that user is a member of"""
+        """Return groups that user is a member of, except for join action"""
+        if self.action == "join":
+            return Group.objects.all()
         return self.queryset.filter(members=self.request.user)
     
     def perform_create(self, serializer):
@@ -105,10 +107,11 @@ class GroupViewSet(viewsets.ModelViewSet):
             )
         
         group.members.add(request.user)
-        return Response(
-            {'message': 'Successfully joined group'},
-            status=status.HTTP_200_OK
-        )
+        serializer = self.get_serializer(group)
+        return Response({
+            'message': 'Successfully joined group',
+            'group': serializer.data
+        }, status=status.HTTP_200_OK)
     
     @action(detail=True, methods=['post'])
     def leave(self, request, pk=None):
@@ -138,4 +141,35 @@ class AlarmViewSet(viewsets.ModelViewSet):
     serializer_class = AlarmSerializer
     
     def get_queryset(self):
+        """Return alarms for groups the user is a member of"""
+        return self.queryset.filter(group__members=self.request.user)
+    
+    def perform_create(self, serializer):
+        """Set creator when creating alarm"""
+        serializer.save(created_by=self.request.user)
         
+    @action(detail=True, methods=['post'])
+    def toggle(self, request, pk=None):
+        """Toggle the alarm's active status"""
+        alarm = self.get_object()
+        alarm.is_active = not alarm.is_active
+        alarm.save()
+        return Response({
+            'is_active': alarm.is_active,
+            'message': f"Alarm {"activated" if alarm.is_active else "deactivated"}"
+        })
+        
+    @action(detail=True, methods=['get'])
+    def my_alarms(self, request):
+        """Get alarms created by current user"""
+        alarms = self.queryset.filter(created_by=request.user)
+        serializer = self.get_serializer(alarms, many=True)
+        return Response(serializer.data)
+        
+class AlarmLogViewSet(viewsets.ReadOnlyModelViewSet):
+    queryset = AlarmLog.objects.all()
+    serializer_class = AlarmLogSerializer
+    
+    def get_queryset(self):
+        """Return alarm logs for user's alarms"""
+        return self.queryset.filter(user=self.request.user).order_by('-triggered_at')
